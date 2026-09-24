@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yvanex · Inventario</title>
+
+<!-- Librerías (todas por CDN, funcionan en GitHub Pages) -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.js"></script>
+
+<style>
+  :root{
+    --azul:#0f3d5c; --azul2:#155a85; --verde:#1f9d6b; --fondo:#f3f6f8;
+    --texto:#1c2733; --gris:#6b7785; --borde:#dfe6ec; --blanco:#fff;
+    --rojo:#c0392b; --amarillo:#e2a339;
+    box-sizing:border-box;
+    padding-top: env(safe-area-inset-top,0px);
+    padding-bottom: env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--fondo); color:var(--texto);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  body.no-logueado > header,
+  body.no-logueado > main,
+  body.no-logueado > nav.tabs{ display:none; }
+
+  header{
+    background:var(--azul); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:20;
+    padding-top:calc(14px + env(safe-area-inset-top,0px));
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  header .brand{font-weight:800; font-size:18px; letter-spacing:.3px;}
+  header .brand span{color:#8fd6b8;}
+  header button.icon{
+    background:transparent; border:none; color:#fff; font-size:20px; cursor:pointer; padding:6px 8px;
+  }
+  main{max-width:720px; margin:0 auto; padding:16px 16px 90px;}
+  .screen{display:none;}
+  .screen.active{display:block; animation:fade .15s ease;}
+  @keyframes fade{from{opacity:0} to{opacity:1}}
+
+  .card{
+    background:var(--blanco); border:1px solid var(--borde); border-radius:14px;
+    padding:16px; margin-bottom:14px;
+  }
+  h2{margin:0 0 4px; font-size:19px;}
+  p.hint{color:var(--gris); font-size:13.5px; margin:4px 0 14px; line-height:1.45;}
+  label{display:block; font-size:13px; font-weight:600; color:var(--gris); margin:10px 0 4px;}
+  input[type=text], input[type=email], input[type=number], select, textarea{
+    width:100%; padding:11px 12px; border:1px solid var(--borde); border-radius:9px;
+    font-size:15px; background:#fbfcfd; color:var(--texto);
+  }
+  textarea{resize:vertical; min-height:70px;}
+  button{
+    cursor:pointer; border:none; border-radius:10px; font-weight:700; font-size:15px;
+    padding:12px 16px; transition:transform .05s ease;
+  }
+  button:active{transform:scale(.98);}
+  .btn-primario{background:var(--verde); color:#fff; width:100%;}
+  .btn-primario:disabled{background:#a9c9bb; cursor:not-allowed;}
+  .btn-secundario{background:#eef2f5; color:var(--azul); width:100%;}
+  .btn-peligro{background:#fbeae8; color:var(--rojo);}
+  .btn-chico{padding:7px 10px; font-size:13px; border-radius:8px;}
+  .fila-botones{display:flex; gap:10px; margin-top:10px;}
+  .fila-botones button{flex:1;}
+
+  #reader{width:100%; border-radius:12px; overflow:hidden; background:#000;}
+  #reader video{border-radius:12px;}
+
+  .item{
+    display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--borde);
+  }
+  .item:last-child{border-bottom:none;}
+  .item .info{flex:1; min-width:0;}
+  .item .nombre{font-weight:700; font-size:14.5px; overflow-wrap:anywhere;}
+  .item .codigo{font-size:12px; color:var(--gris);}
+  .item .controles{display:flex; align-items:center; gap:6px;}
+  .item input[type=number]{width:58px; text-align:center; padding:8px 4px;}
+  .item select{width:90px; padding:8px 4px; font-size:12.5px;}
+  .item .quitar{background:none; color:var(--rojo); font-size:18px; font-weight:900; padding:4px 8px;}
+
+  .badge{
+    display:inline-block; background:#eaf6f0; color:var(--verde); font-size:12px; font-weight:700;
+    padding:3px 9px; border-radius:20px; margin-left:6px;
+  }
+  .totales{display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
+  .totales .caja{
+    flex:1; min-width:100px; background:#f6f9fb; border:1px solid var(--borde); border-radius:10px;
+    padding:10px; text-align:center;
+  }
+  .totales .caja b{display:block; font-size:20px; color:var(--azul);}
+  .totales .caja span{font-size:12px; color:var(--gris);}
+
+  nav.tabs{
+    position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--borde);
+    display:flex; z-index:30; padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  nav.tabs button{
+    flex:1; background:none; border-radius:0; padding:12px 4px 10px; font-size:12px; color:var(--gris);
+    display:flex; flex-direction:column; align-items:center; gap:3px; font-weight:600;
+  }
+  nav.tabs button .ico{font-size:19px;}
+  nav.tabs button.activo{color:var(--azul);}
+
+  .modal-fondo{
+    position:fixed; inset:0; background:rgba(10,20,30,.55); z-index:50; display:none;
+    align-items:flex-end; justify-content:center;
+  }
+  .modal-fondo.activo{display:flex;}
+  .modal{
+    background:#fff; width:100%; max-width:720px; border-radius:18px 18px 0 0; padding:18px 18px 26px;
+    max-height:85vh; overflow-y:auto;
+  }
+  .modal h3{margin-top:0;}
+  .cerrar-modal{float:right; background:none; font-size:22px; color:var(--gris); padding:0 6px;}
+
+  table.previa{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;}
+  table.previa th, table.previa td{border:1px solid var(--borde); padding:6px 8px; text-align:left;}
+  table.previa th{background:#f3f6f8;}
+
+  .msg{
+    font-size:13px; border-radius:10px; padding:10px 12px; margin:10px 0; display:none;
+  }
+  .msg.ok{background:#eaf6f0; color:#136341; display:block;}
+  .msg.err{background:#fbeae8; color:#8c2b20; display:block;}
+  .msg.info{background:#eaf1fb; color:#204a7a; display:block;}
+
+  details.ayuda{background:#eaf1fb; border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:13.5px; color:#204a7a;}
+  details.ayuda summary{font-weight:700; cursor:pointer;}
+  details.ayuda ol{padding-left:18px; margin:8px 0;}
+  details.ayuda li{margin-bottom:6px;}
+  .aviso{background:#fff6e6; border:1px solid #f0d38b; color:#7a5b06; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px;}
+
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --fondo:#0f1620; --texto:#e7edf2; --borde:#26323d; --blanco:#161f29; --gris:#8e9aa6;
+    }
+    body{background:var(--fondo);}
+    input,select,textarea{background:#0f1620; color:var(--texto); border-color:var(--borde);}
+    table.previa th{background:#1b2530;}
+    nav.tabs{background:#161f29;}
+  }
+</style>
+</head>
+<body class="no-logueado">
+
+<!-- ==================== PANTALLA DE ACCESO (filtro simple, NO es seguridad real) ==================== -->
+<div id="pantallaLogin" style="position:fixed; inset:0; background:#0f3d5c; z-index:100; display:flex; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#fff; border-radius:16px; padding:26px 22px; max-width:360px; width:100%;">
+    <h2 style="margin-top:0; color:#0f3d5c;">Tiendas Yvanex</h2>
+    <p style="color:#6b7785; font-size:13.5px; margin-top:-6px;">Ingresa tus datos de acceso para continuar.</p>
+    <label style="display:block; font-size:13px; font-weight:600; color:#6b7785; margin:10px 0 4px;">Usuario</label>
+    <input type="text" id="loginUsuario" style="width:100%; padding:11px 12px; border:1px solid #dfe6ec; border-radius:9px; font-size:15px;">
+    <label style="display:block; font-size:13px; font-weight:600; color:#6b7785; margin:10px 0 4px;">Contraseña</label>
+    <input type="password" id="loginClave" style="width:100%; padding:11px 12px; border:1px solid #dfe6ec; border-radius:9px; font-size:15px;">
+    <div id="loginError" style="color:#c0392b; font-size:13px; margin-top:8px; display:none;">Usuario o contraseña incorrectos.</div>
+    <button id="btnLogin" style="width:100%; margin-top:16px; background:#1f9d6b; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:15px; padding:12px 16px; cursor:pointer;">Ingresar</button>
+  </div>
+</div>
+
+<header>
+  <div class="brand">Tiendas <span>Yvanex</span> · Inventario</div>
+  <button class="icon" id="btnConfig" title="Configuración">⚙️</button>
+</header>
+
+<main>
+
+  <!-- ==================== PANTALLA 1: DATOS DEL INVENTARIO ==================== -->
+  <section class="screen active" id="pantalla-inicio">
+    <div class="card">
+      <h2>Nuevo inventario</h2>
+      <p class="hint">Ponle un nombre a este inventario y registra quién lo está realizando. Esto aparecerá en el Excel, el PDF y en el asunto del correo.</p>
+
+      <label>Nombre del inventario</label>
+      <input type="text" id="inpNombreInv" placeholder="Ej: Inventario Tienda Miraflores - Sept">
+
+      <label>Nombre de quien realiza el inventario</label>
+      <input type="text" id="inpResponsable" placeholder="Ej: Rosa Huamán">
+
+      <button class="btn-primario" style="margin-top:16px" id="btnComenzar">Comenzar a escanear →</button>
+    </div>
+
+    <details class="ayuda">
+      <summary>¿Cómo se envía el correo?</summary>
+      <p>Esta versión está preparada para funcionar como <b>sitio 100% estático en GitHub Pages</b>. Genera el Excel y PDF directamente en el navegador y abre un borrador de Gmail con el asunto y resumen ya preparados.</p>
+      <p><b>Importante:</b> un HTML alojado en GitHub Pages no puede usar directamente una contraseña de aplicación de Gmail para conectarse al servidor SMTP de Google. La contraseña tampoco debe guardarse, aunque esté codificada en Base64/JSON, porque cualquier visitante podría recuperarla.</p>
+      <p>Después de abrir Gmail, adjunta los archivos Excel y PDF que la aplicación descargó. En teléfonos compatibles, también puedes usar la opción de compartir archivos generados.</p>
+    </details>
+
+    <details class="ayuda">
+      <summary>¿De dónde salen los productos y códigos?</summary>
+      <p>No existe una lista pública oficial con "todos los códigos QR/barras" de Tottus, Metro o Wong, así que no se puede inventar una sin que tenga errores. Esta app funciona con <b>códigos reales</b>: escaneas con la cámara el código de barras o QR que trae el producto, y la primera vez que aparece un código nuevo, te pide el nombre del producto y lo recuerda para la próxima vez (se guarda en este navegador). También puedes <b>importar tu propio catálogo</b> desde un Excel/CSV con columnas <code>codigo, nombre</code> en ⚙️ Configuración.</p>
+    </details>
+  </section>
+
+  <!-- ==================== PANTALLA 2: ESCANEO ==================== -->
+  <section class="screen" id="pantalla-scan">
+    <div class="card">
+      <h2 id="tituloInvActivo">Inventario</h2>
+      <p class="hint" id="subtituloInvActivo"></p>
+
+      <div id="reader"></div>
+      <div class="msg" id="msgScanner"></div>
+
+      <div class="fila-botones">
+        <button class="btn-secundario btn-chico" id="btnPausar">⏸ Pausar cámara</button>
+        <button class="btn-secundario btn-chico" id="btnManual">⌨ Ingresar código a mano</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Productos escaneados <span class="badge" id="badgeCantidad">0</span></h2>
+      <div id="listaItems"><p class="hint">Aún no escaneas ningún producto.</p></div>
+
+      <div class="totales" id="totales" style="display:none">
+        <div class="caja"><b id="totProductos">0</b><span>productos distintos</span></div>
+        <div class="caja"><b id="totUnidades">0</b><span>unidades</span></div>
+        <div class="caja"><b id="totCajas">0</b><span>cajas</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== PANTALLA 3: RESUMEN Y ENVÍO ==================== -->
+  <section class="screen" id="pantalla-resumen">
+    <div class="card">
+      <h2>Resumen del inventario</h2>
+      <p class="hint">Revisa los datos, descarga los archivos y/o envíalos por correo.</p>
+      <table class="previa" id="tablaResumenDatos"></table>
+    </div>
+
+    <div class="card">
+      <h2>Descargar archivos</h2>
+      <div class="fila-botones">
+        <button class="btn-secundario" id="btnDescargarExcel">⬇ Descargar Excel</button>
+        <button class="btn-secundario" id="btnDescargarPdf">⬇ Descargar PDF</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Enviar por correo</h2>
+      <label>Correo destino</label>
+      <input type="email" id="inpCorreoDestino" placeholder="destinatario@correo.com">
+      <p class="hint">El borrador se abrirá en Gmail con el asunto y el resumen listos. Los archivos Excel y PDF se descargan para adjuntarlos antes de enviar.</p>
+      <button class="btn-primario" id="btnVerPrevia">Ver vista previa antes de enviar</button>
+      <div class="msg" id="msgEnvio"></div>
+    </div>
+  </section>
+
+</main>
+
+<nav class="tabs">
+  <button class="tab-btn activo" data-pantalla="pantalla-inicio"><span class="ico">📝</span>Datos</button>
+  <button class="tab-btn" data-pantalla="pantalla-scan"><span class="ico">📷</span>Escanear</button>
+  <button class="tab-btn" data-pantalla="pantalla-resumen"><span class="ico">📤</span>Enviar</button>
+</nav>
+
+<!-- Modal: producto nuevo -->
+<div class="modal-fondo" id="modalNuevoProducto">
+  <div class="modal">
+    <button class="cerrar-modal" data-cerrar="modalNuevoProducto">×</button>
+    <h3>Producto nuevo</h3>
+    <p class="hint">Este código no está en tu catálogo todavía. Ponle un nombre (se recordará para la próxima vez que lo escanees).</p>
+    <label>Código escaneado</label>
+    <input type="text" id="modalCodigoNuevo" disabled>
+    <label>Nombre del producto</label>
+    <input type="text" id="modalNombreNuevo" placeholder="Ej: Leche Gloria 400g">
+    <button class="btn-primario" style="margin-top:14px" id="btnGuardarNuevoProducto">Guardar y agregar al inventario</button>
+  </div>
+</div>
+
+<!-- Modal: configuración -->
+<div class="modal-fondo" id="modalConfig">
+  <div class="modal">
+    <button class="cerrar-modal" data-cerrar="modalConfig">×</button>
+    <h3>⚙️ Configuración</h3>
+
+    <div class="aviso">No se almacenan contraseñas de Gmail en esta página. GitHub Pages es un hosting estático y cualquier secreto incluido en el HTML sería público.</div>
+    <p class="hint">El correo remitente será tu cuenta de Gmail cuando confirmes el borrador abierto por Gmail. El destinatario se toma del campo de envío.</p>
+    <hr style="margin:18px 0; border:none; border-top:1px solid var(--borde)">
+
+    <h3>Importar catálogo propio</h3>
+    <p class="hint">Sube un Excel/CSV con columnas <b>codigo</b> y <b>nombre</b> para precargar tus productos (no reemplaza lo que ya tengas, se combina).</p>
+    <input type="file" id="fileCatalogo" accept=".csv,.xlsx,.xls">
+    <div class="msg" id="msgCatalogo"></div>
+
+    <hr style="margin:18px 0; border:none; border-top:1px solid var(--borde)">
+
+    <button class="btn-peligro" style="width:100%" id="btnReiniciar">Reiniciar inventario actual (borra la lista escaneada)</button>
+  </div>
+</div>
+
+<!-- Modal: vista previa de envío -->
+<div class="modal-fondo" id="modalPrevia">
+  <div class="modal">
+    <button class="cerrar-modal" data-cerrar="modalPrevia">×</button>
+    <h3>Vista previa del correo</h3>
+    <p class="hint">Esto es exactamente lo que se va a enviar. Revísalo antes de confirmar.</p>
+
+    <label>Para</label>
+    <div id="previaPara" style="font-weight:700"></div>
+    <label>Asunto</label>
+    <div id="previaAsunto" style="font-weight:700"></div>
+    <label>Mensaje</label>
+    <textarea id="previaMensaje" readonly style="min-height:220px; font-family:monospace; font-size:12.5px"></textarea>
+
+    <div class="fila-botones" style="margin-top:14px">
+      <button class="btn-secundario" data-cerrar="modalPrevia">Cancelar</button>
+      <button class="btn-primario" id="btnConfirmarEnvio">Confirmar y enviar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================== ACCESO (filtro simple, NO es seguridad real) ==================
+   Cualquiera que vea el código fuente de esta página puede leer estos valores.
+   No reutilices esta contraseña en otro lugar ni la trates como protección real. */
+const USUARIO_VALIDO = 'prueba01';
+const CLAVE_VALIDA   = 'admin';
+
+if (sessionStorage.getItem('yvanex_logueado') === 'si') {
+  document.body.classList.remove('no-logueado');
+  document.getElementById('pantallaLogin').style.display = 'none';
+}
+
+document.getElementById('btnLogin').addEventListener('click', intentarLogin);
+document.getElementById('loginClave').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') intentarLogin();
+});
+function intentarLogin(){
+  const u = document.getElementById('loginUsuario').value.trim();
+  const p = document.getElementById('loginClave').value;
+  if(u === USUARIO_VALIDO && p === CLAVE_VALIDA){
+    sessionStorage.setItem('yvanex_logueado', 'si');
+    document.body.classList.remove('no-logueado');
+    document.getElementById('pantallaLogin').style.display = 'none';
+  } else {
+    document.getElementById('loginError').style.display = 'block';
+  }
+}
+
+/* ================== ESTADO Y PERSISTENCIA ================== */
+/* Catálogo precargado (proporcionado por el usuario). No verificado contra una base
+   de datos oficial: si algún código no coincide con el producto real, corrígelo
+   escaneándolo y guardando el nombre correcto, o editando este objeto. */
+const CATALOGO_INICIAL = {
+  "7751437002013": "Agua Loa Gasificada Sabor Granadilla 625ml",
+  "7750106001211": "Coca-Cola Sabor Original Retornable 2.5L",
+  "7750106001259": "Inca Kola Regular Retornable 2.5L",
+  "7751034003002": "Agua Cielo Sin Gas 625ml",
+  "7751437000798": "Kola Real (KR) Sabor Fresa 3L",
+  "7750243051446": "Mayonesa AlaCena Receta Casera Doypack 200g",
+  "7750243003469": "Mostaza AlaCena Doypack 100g",
+  "7750243056076": "Ketchup AlaCena Doypack 200g",
+  "7750212010627": "Leche Evaporada Gloria Azul Tarro 395g",
+  "7750243000574": "Aceite Vegetal Primor Premium 1L"
+};
+let catalogo = JSON.parse(localStorage.getItem('yvanex_catalogo') || 'null');
+if (!catalogo) {
+  catalogo = { ...CATALOGO_INICIAL };
+} else {
+  // El catálogo precargado nunca sobreescribe ediciones que el usuario ya guardó
+  catalogo = { ...CATALOGO_INICIAL, ...catalogo };
+}
+let config   = JSON.parse(localStorage.getItem('yvanex_config')   || '{}');
+let inventario = JSON.parse(localStorage.getItem('yvanex_inventario') || 'null') || {
+  nombre:'', responsable:'', items:[] // items: {codigo, nombre, cantidad, tipo, hora}
+};
+
+function guardarCatalogo(){ localStorage.setItem('yvanex_catalogo', JSON.stringify(catalogo)); }
+function guardarConfig(){ localStorage.setItem('yvanex_config', JSON.stringify(config)); }
+function guardarInventario(){ localStorage.setItem('yvanex_inventario', JSON.stringify(inventario)); }
+guardarCatalogo();
+
+/* ================== NAVEGACIÓN ================== */
+function irAPantalla(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    b.classList.toggle('activo', b.dataset.pantalla===id);
+  });
+  if(id==='pantalla-resumen') renderResumen();
+  if(id==='pantalla-scan' && !inventario.nombre){
+    alert('Primero pon el nombre del inventario y de quién lo realiza, en la pestaña Datos.');
+    irAPantalla('pantalla-inicio');
+  }
+}
+document.querySelectorAll('.tab-btn').forEach(b=>{
+  b.addEventListener('click', ()=>irAPantalla(b.dataset.pantalla));
+});
+
+function abrirModal(id){ document.getElementById(id).classList.add('activo'); }
+function cerrarModal(id){ document.getElementById(id).classList.remove('activo'); }
+document.querySelectorAll('[data-cerrar]').forEach(b=>{
+  b.addEventListener('click', ()=>cerrarModal(b.dataset.cerrar));
+});
+
+/* ================== PANTALLA 1: DATOS ================== */
+document.getElementById('inpNombreInv').value = inventario.nombre;
+document.getElementById('inpResponsable').value = inventario.responsable;
+
+document.getElementById('btnComenzar').addEventListener('click', ()=>{
+  const nombre = document.getElementById('inpNombreInv').value.trim();
+  const responsable = document.getElementById('inpResponsable').value.trim();
+  if(!nombre || !responsable){
+    alert('Completa el nombre del inventario y el nombre de quien lo realiza.');
+    return;
+  }
+  inventario.nombre = nombre;
+  inventario.responsable = responsable;
+  guardarInventario();
+  document.getElementById('tituloInvActivo').textContent = nombre;
+  document.getElementById('subtituloInvActivo').textContent = 'Responsable: ' + responsable;
+  irAPantalla('pantalla-scan');
+  iniciarCamara();
+});
+
+/* ================== PANTALLA 2: ESCÁNER ================== */
+let html5QrCode = null;
+let camaraActiva = false;
+let ultimoCodigo = null, ultimoTiempo = 0;
+
+function iniciarCamara(){
+  if(camaraActiva) return;
+  const msg = document.getElementById('msgScanner');
+  msg.className = 'msg'; msg.textContent='';
+  html5QrCode = new Html5Qrcode("reader");
+  const config = {
+    fps: 10,
+    qrbox: { width: 260, height: 160 },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR
+    ]
+  };
+  html5QrCode.start({ facingMode: "environment" }, config, onScanExitoso, ()=>{})
+    .then(()=>{ camaraActiva = true; })
+    .catch(err=>{
+      msg.className='msg err';
+      msg.textContent = 'No se pudo abrir la cámara (' + err + '). Revisa los permisos del navegador, o usa "Ingresar código a mano".';
+    });
+}
+function pausarCamara(){
+  if(html5QrCode && camaraActiva){
+    html5QrCode.stop().then(()=>{ camaraActiva=false; });
+  }
+}
+document.getElementById('btnPausar').addEventListener('click', (e)=>{
+  if(camaraActiva){ pausarCamara(); e.target.textContent='▶ Reanudar cámara'; }
+  else { iniciarCamara(); e.target.textContent='⏸ Pausar cámara'; }
+});
+document.getElementById('btnManual').addEventListener('click', ()=>{
+  const codigo = prompt('Escribe el código del producto:');
+  if(codigo) onScanExitoso(codigo.trim());
+});
+
+function onScanExitoso(codigo){
+  const ahora = Date.now();
+  if(codigo === ultimoCodigo && (ahora - ultimoTiempo) < 1800) return; // evita duplicados por lecturas repetidas
+  ultimoCodigo = codigo; ultimoTiempo = ahora;
+  if(navigator.vibrate) navigator.vibrate(80);
+
+  if(catalogo[codigo]){
+    agregarItem(codigo, catalogo[codigo]);
+  } else {
+    document.getElementById('modalCodigoNuevo').value = codigo;
+    document.getElementById('modalNombreNuevo').value = '';
+    abrirModal('modalNuevoProducto');
+    document.getElementById('modalNombreNuevo').focus();
+  }
+}
+
+document.getElementById('btnGuardarNuevoProducto').addEventListener('click', ()=>{
+  const codigo = document.getElementById('modalCodigoNuevo').value;
+  const nombre = document.getElementById('modalNombreNuevo').value.trim();
+  if(!nombre){ alert('Ponle un nombre al producto.'); return; }
+  catalogo[codigo] = nombre;
+  guardarCatalogo();
+  agregarItem(codigo, nombre);
+  cerrarModal('modalNuevoProducto');
+});
+
+function agregarItem(codigo, nombre){
+  const existente = inventario.items.find(it=>it.codigo===codigo);
+  if(existente){
+    existente.cantidad += 1;
+  } else {
+    inventario.items.push({
+      codigo, nombre, cantidad:1, tipo:'unidad',
+      hora: new Date().toLocaleString('es-PE')
+    });
+  }
+  guardarInventario();
+  renderItems();
+}
+
+function renderItems(){
+  const cont = document.getElementById('listaItems');
+  if(inventario.items.length===0){
+    cont.innerHTML = '<p class="hint">Aún no escaneas ningún producto.</p>';
+    document.getElementById('totales').style.display='none';
+    document.getElementById('badgeCantidad').textContent='0';
+    return;
+  }
+  cont.innerHTML = '';
+  inventario.items.forEach((it, idx)=>{
+    const div = document.createElement('div');
+    div.className='item';
+    div.innerHTML = `
+      <div class="info">
+        <div class="nombre">${escapeHtml(it.nombre)}</div>
+        <div class="codigo">Código: ${escapeHtml(it.codigo)}</div>
+      </div>
+      <div class="controles">
+        <input type="number" min="1" value="${it.cantidad}" data-idx="${idx}" class="inpCantidad">
+        <select data-idx="${idx}" class="selTipo">
+          <option value="unidad" ${it.tipo==='unidad'?'selected':''}>Unidad</option>
+          <option value="caja" ${it.tipo==='caja'?'selected':''}>Caja</option>
+        </select>
+        <button class="quitar" data-idx="${idx}">×</button>
+      </div>`;
+    cont.appendChild(div);
+  });
+
+  cont.querySelectorAll('.inpCantidad').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const idx = +inp.dataset.idx;
+      let v = parseInt(inp.value,10);
+      if(isNaN(v) || v<1) v=1;
+      inventario.items[idx].cantidad = v;
+      guardarInventario();
+    });
+  });
+  cont.querySelectorAll('.selTipo').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      inventario.items[+sel.dataset.idx].tipo = sel.value;
+      guardarInventario();
+    });
+  });
+  cont.querySelectorAll('.quitar').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      inventario.items.splice(+btn.dataset.idx,1);
+      guardarInventario();
+      renderItems();
+    });
+  });
+
+  document.getElementById('badgeCantidad').textContent = inventario.items.length;
+  const totUnidades = inventario.items.filter(i=>i.tipo==='unidad').reduce((s,i)=>s+i.cantidad,0);
+  const totCajas    = inventario.items.filter(i=>i.tipo==='caja').reduce((s,i)=>s+i.cantidad,0);
+  document.getElementById('totales').style.display='flex';
+  document.getElementById('totProductos').textContent = inventario.items.length;
+  document.getElementById('totUnidades').textContent = totUnidades;
+  document.getElementById('totCajas').textContent = totCajas;
+}
+renderItems();
+if(inventario.nombre){
+  document.getElementById('tituloInvActivo').textContent = inventario.nombre;
+  document.getElementById('subtituloInvActivo').textContent = 'Responsable: ' + inventario.responsable;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ================== PANTALLA 3: RESUMEN ================== */
+function renderResumen(){
+  const tabla = document.getElementById('tablaResumenDatos');
+  const fecha = new Date().toLocaleString('es-PE');
+  let filas = `
+    <tr><th>Tienda</th><td>Yvanex</td></tr>
+    <tr><th>Inventario</th><td>${escapeHtml(inventario.nombre||'-')}</td></tr>
+    <tr><th>Responsable</th><td>${escapeHtml(inventario.responsable||'-')}</td></tr>
+    <tr><th>Fecha de envío</th><td>${fecha}</td></tr>
+    <tr><th>Productos distintos</th><td>${inventario.items.length}</td></tr>
+  `;
+  tabla.innerHTML = filas;
+}
+
+/* ---- Generar Excel ---- */
+function generarLibroExcel(){
+  const wb = XLSX.utils.book_new();
+  const encabezado = [
+    ['Tienda:', 'Yvanex'],
+    ['Inventario:', inventario.nombre],
+    ['Responsable:', inventario.responsable],
+    ['Fecha de generación:', new Date().toLocaleString('es-PE')],
+    [],
+    ['Código', 'Producto', 'Cantidad', 'Tipo', 'Hora de registro']
+  ];
+  const filas = inventario.items.map(it=>[it.codigo, it.nombre, it.cantidad, it.tipo, it.hora]);
+  const ws = XLSX.utils.aoa_to_sheet([...encabezado, ...filas]);
+  ws['!cols'] = [{wch:16},{wch:32},{wch:10},{wch:10},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+  return wb;
+}
+function nombreArchivoBase(){
+  const fecha = new Date().toISOString().slice(0,10);
+  const nombreLimpio = (inventario.nombre||'inventario').replace(/[^a-z0-9]+/gi,'_');
+  return `Yvanex_${nombreLimpio}_${fecha}`;
+}
+function descargarExcelBlob(){
+  const wb = generarLibroExcel();
+  return new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})], {type:'application/octet-stream'});
+}
+document.getElementById('btnDescargarExcel').addEventListener('click', ()=>{
+  const wb = generarLibroExcel();
+  XLSX.writeFile(wb, nombreArchivoBase() + '.xlsx');
+});
+
+/* ---- Generar PDF ---- */
+function generarPdfBlob(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text('Tiendas Yvanex · Resumen de inventario', 14, 18);
+  doc.setFontSize(11);
+  doc.text(`Inventario: ${inventario.nombre}`, 14, 28);
+  doc.text(`Responsable: ${inventario.responsable}`, 14, 35);
+  doc.text(`Fecha: ${new Date().toLocaleString('es-PE')}`, 14, 42);
+
+  const totUnidades = inventario.items.filter(i=>i.tipo==='unidad').reduce((s,i)=>s+i.cantidad,0);
+  const totCajas    = inventario.items.filter(i=>i.tipo==='caja').reduce((s,i)=>s+i.cantidad,0);
+  doc.text(`Productos distintos: ${inventario.items.length}   |   Unidades: ${totUnidades}   |   Cajas: ${totCajas}`, 14, 51);
+
+  doc.autoTable({
+    startY: 58,
+    head: [['Código','Producto','Cantidad','Tipo']],
+    body: inventario.items.map(it=>[it.codigo, it.nombre, it.cantidad, it.tipo]),
+    styles:{fontSize:9}
+  });
+  return doc.output('blob');
+}
+document.getElementById('btnDescargarPdf').addEventListener('click', ()=>{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(16); doc.text('Tiendas Yvanex · Resumen de inventario', 14, 18);
+  doc.setFontSize(11);
+  doc.text(`Inventario: ${inventario.nombre}`, 14, 28);
+  doc.text(`Responsable: ${inventario.responsable}`, 14, 35);
+  doc.text(`Fecha: ${new Date().toLocaleString('es-PE')}`, 14, 42);
+  const totUnidades = inventario.items.filter(i=>i.tipo==='unidad').reduce((s,i)=>s+i.cantidad,0);
+  const totCajas    = inventario.items.filter(i=>i.tipo==='caja').reduce((s,i)=>s+i.cantidad,0);
+  doc.text(`Productos distintos: ${inventario.items.length}   |   Unidades: ${totUnidades}   |   Cajas: ${totCajas}`, 14, 51);
+  doc.autoTable({
+    startY: 58,
+    head: [['Código','Producto','Cantidad','Tipo']],
+    body: inventario.items.map(it=>[it.codigo, it.nombre, it.cantidad, it.tipo]),
+    styles:{fontSize:9}
+  });
+  doc.save(nombreArchivoBase() + '.pdf');
+});
+
+/* ---- Vista previa + envío ---- */
+function construirMensajeTexto(){
+  const totUnidades = inventario.items.filter(i=>i.tipo==='unidad').reduce((s,i)=>s+i.cantidad,0);
+  const totCajas = inventario.items.filter(i=>i.tipo==='caja').reduce((s,i)=>s+i.cantidad,0);
+  let txt = `Tiendas Yvanex - Informe de inventario\n`;
+  txt += `Inventario: ${inventario.nombre}\n`;
+  txt += `Responsable: ${inventario.responsable}\n`;
+  txt += `Fecha/Hora: ${new Date().toLocaleString('es-PE')}\n\n`;
+  txt += `Productos distintos: ${inventario.items.length} | Unidades: ${totUnidades} | Cajas: ${totCajas}\n\n`;
+  txt += `Detalle:\n`;
+  inventario.items.forEach(it=>{
+    txt += `- ${it.nombre} (código ${it.codigo}): ${it.cantidad} ${it.tipo}(s)\n`;
+  });
+  txt += `\nLos archivos Excel y PDF se generaron localmente desde Tiendas Yvanex.`;
+  return txt;
+}
+
+function construirAsunto(){
+  const ahora = new Date();
+  return `Inventario Yvanex - ${inventario.nombre} - ${ahora.toLocaleDateString('es-PE')} ${ahora.toLocaleTimeString('es-PE')} - ${inventario.responsable}`;
+}
+
+document.getElementById('btnVerPrevia').addEventListener('click', ()=>{
+  const correo = document.getElementById('inpCorreoDestino').value.trim();
+  if(!correo){ alert('Escribe el correo destino.'); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)){ alert('Escribe un correo válido.'); return; }
+  if(inventario.items.length===0){ alert('No hay productos escaneados todavía.'); return; }
+
+  const asunto = construirAsunto();
+  document.getElementById('previaPara').textContent = correo;
+  document.getElementById('previaAsunto').textContent = asunto;
+  document.getElementById('previaMensaje').value = construirMensajeTexto();
+  abrirModal('modalPrevia');
+});
+
+document.getElementById('btnConfirmarEnvio').addEventListener('click', async ()=>{
+  const correo = document.getElementById('previaPara').textContent;
+  const asunto = document.getElementById('previaAsunto').textContent;
+  const mensaje = document.getElementById('previaMensaje').value;
+  const msg = document.getElementById('msgEnvio');
+
+  // Genera ambos archivos para que queden disponibles inmediatamente.
+  const excelBlob = descargarExcelBlob();
+  const pdfBlob = generarPdfBlob();
+
+  // Intento de compartir archivos en móviles compatibles.
+  try{
+    const excelFile = new File([excelBlob], nombreArchivoBase()+'.xlsx',
+      {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const pdfFile = new File([pdfBlob], nombreArchivoBase()+'.pdf',
+      {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[excelFile,pdfFile]})){
+      await navigator.share({
+        title: asunto,
+        text: mensaje,
+        files: [excelFile,pdfFile]
+      });
+      msg.className='msg ok';
+      msg.textContent='Se abrió el menú de compartir con el informe y sus dos archivos.';
+      cerrarModal('modalPrevia');
+      return;
+    }
+  }catch(err){
+    // Si el usuario cancela el menú de compartir, continúa con Gmail.
+  }
+
+  // En escritorio/navegadores sin Web Share: descarga los archivos y abre Gmail.
+  const urlExcel = URL.createObjectURL(excelBlob);
+  const a1 = document.createElement('a');
+  a1.href = urlExcel; a1.download = nombreArchivoBase()+'.xlsx'; a1.click();
+  setTimeout(()=>URL.revokeObjectURL(urlExcel), 1000);
+
+  const urlPdf = URL.createObjectURL(pdfBlob);
+  const a2 = document.createElement('a');
+  a2.href = urlPdf; a2.download = nombreArchivoBase()+'.pdf'; a2.click();
+  setTimeout(()=>URL.revokeObjectURL(urlPdf), 1000);
+
+  const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1'
+    + '&to=' + encodeURIComponent(correo)
+    + '&su=' + encodeURIComponent(asunto)
+    + '&body=' + encodeURIComponent(mensaje);
+  window.open(gmailUrl, '_blank');
+
+  msg.className='msg ok';
+  msg.textContent='Excel y PDF descargados y borrador de Gmail abierto. Adjunta ambos archivos al correo y pulsa Enviar.';
+  cerrarModal('modalPrevia');
+});
+
+/* ================== CONFIGURACIÓN ================== */
+document.getElementById('btnConfig').addEventListener('click', ()=>{
+  abrirModal('modalConfig');
+});
+
+document.getElementById('btnReiniciar').addEventListener('click', ()=>{
+  if(confirm('¿Seguro que quieres borrar todos los productos escaneados de este inventario?')){
+    inventario.items = [];
+    guardarInventario();
+    renderItems();
+    cerrarModal('modalConfig');
+    irAPantalla('pantalla-scan');
+  }
+});
+
+/* ---- Importar catálogo CSV/Excel ---- */
+document.getElementById('fileCatalogo').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const msg = document.getElementById('msgCatalogo');
+  const reader = new FileReader();
+  reader.onload = (evt)=>{
+    try{
+      const wb = XLSX.read(evt.target.result, {type:'binary'});
+      const hoja = wb.Sheets[wb.SheetNames[0]];
+      const filas = XLSX.utils.sheet_to_json(hoja, {defval:''});
+      let agregados = 0;
+      filas.forEach(f=>{
+        const claves = Object.keys(f).reduce((o,k)=>{o[k.toLowerCase().trim()]=f[k]; return o;},{});
+        const codigo = String(claves['codigo']||claves['código']||'').trim();
+        const nombre = String(claves['nombre']||'').trim();
+        if(codigo && nombre){ catalogo[codigo] = nombre; agregados++; }
+      });
+      guardarCatalogo();
+      msg.className='msg ok';
+      msg.textContent = `Se importaron ${agregados} productos al catálogo.`;
+    }catch(err){
+      msg.className='msg err';
+      msg.textContent = 'No se pudo leer el archivo. Asegúrate que tenga columnas "codigo" y "nombre".';
+    }
+  };
+  reader.readAsBinaryString(file);
+});
+</script>
+</body>
+</html>
